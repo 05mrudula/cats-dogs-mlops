@@ -1,0 +1,11 @@
+{
+    "image_size": [
+        224,
+        224
+    ],
+    "batch_size": 32,
+    "epochs": 10,
+    "learning_rate": 0.001,
+    "random_seed": 42,
+    "model": "baseline_cnn"
+}
