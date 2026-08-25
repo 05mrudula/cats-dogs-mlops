@@ -8,7 +8,7 @@ from pathlib import Path
 # Import train_test_split for creating dataset splits
 from sklearn.model_selection import train_test_split
 
-# Import TensorFlow for image preprocessing
+# Import TensorFlow for image preprocessing and data pipelines
 import tensorflow as tf
 
 
@@ -18,19 +18,26 @@ import tensorflow as tf
 
 # Define the location of the Cats vs Dogs dataset
 DATA_DIR = Path("data/raw/PetImages")
+
+# Define the directories containing cat and dog images
 CAT_DIR = DATA_DIR / "Cat"
 DOG_DIR = DATA_DIR / "Dog"
 
 # Define the target image dimensions required by the CNN
 IMAGE_SIZE = (224, 224)
 
+# Define the number of images processed together in one batch
+BATCH_SIZE = 32
+
 
 # ==========================================
 # Image Discovery
 # ==========================================
 
-# Collect all JPEG image paths from the Cat and Dog folders
+# Collect all JPG image paths from the Cat directory
 cat_images = list(CAT_DIR.glob("*.jpg"))
+
+# Collect all JPG image paths from the Dog directory
 dog_images = list(DOG_DIR.glob("*.jpg"))
 
 # Display the number of images available in each class
@@ -42,12 +49,16 @@ print("Number of dog images:", len(dog_images))
 # Label Preparation
 # ==========================================
 
-# Assign labels: 0 for cats and 1 for dogs
+# Assign label 0 to cat images
 cat_labels = [0] * len(cat_images)
+
+# Assign label 1 to dog images
 dog_labels = [1] * len(dog_images)
 
-# Combine image paths and their corresponding labels
+# Combine image paths from both classes
 image_paths = cat_images + dog_images
+
+# Combine the corresponding labels
 labels = cat_labels + dog_labels
 
 
@@ -65,6 +76,7 @@ X_train, X_temp, y_train, y_temp = train_test_split(
 )
 
 # Split the temporary data equally into validation and test sets
+# This produces an overall 80/10/10 dataset split
 X_val, X_test, y_val, y_test = train_test_split(
     X_temp,
     y_temp,
@@ -83,34 +95,40 @@ print("Test samples:", len(X_test))
 # Image Preprocessing
 # ==========================================
 
-# Load and preprocess a single image
-def load_and_preprocess_image(image_path):
-    # Load the image, resize it, and ensure it has RGB channels
-    image = tf.keras.utils.load_img(
-        image_path,
-        target_size=IMAGE_SIZE,
-        color_mode="rgb"
+def load_and_preprocess_image(image_path, label):
+    """
+    Load, resize, normalize, and return a single image.
+
+    TensorFlow operations are used so that this function
+    can run correctly inside a tf.data data pipeline.
+    """
+
+    # Read the image file as raw binary data
+    image = tf.io.read_file(image_path)
+
+    # Decode the image while automatically detecting its format
+    # This allows the pipeline to handle different image formats
+    # even when the file extension is misleading.
+    image = tf.image.decode_image(
+        image,
+        channels=3,
+        expand_animations=False
     )
 
-    # Convert the image into a numerical array
-    image = tf.keras.utils.img_to_array(image)
+    # Explicitly define the image shape for TensorFlow
+    image.set_shape([None, None, 3])
 
-    # Normalize pixel values from 0-255 to 0-1
-    image = image / 255.0
+    # Resize the image to the dimensions required by the CNN
+    image = tf.image.resize(
+        image,
+        IMAGE_SIZE
+    )
 
-    return image
+    # Convert pixel values from 0-255 to the range 0-1
+    image = tf.cast(image, tf.float32) / 255.0
 
-
-# ==========================================
-# Preprocessing Verification
-# ==========================================
-
-# Test preprocessing using the first image in the dataset
-sample_image = load_and_preprocess_image(image_paths[0])
-
-# Display the shape and pixel value range of the processed image
-print("Processed image shape:", sample_image.shape)
-print("Pixel value range:", sample_image.min(), "to", sample_image.max())
+    # Return the processed image and its corresponding label
+    return image, label
 
 
 # ==========================================
@@ -119,6 +137,7 @@ print("Pixel value range:", sample_image.min(), "to", sample_image.max())
 
 # Define augmentation techniques for the training images
 data_augmentation = tf.keras.Sequential([
+
     # Randomly flip images horizontally
     tf.keras.layers.RandomFlip("horizontal"),
 
@@ -126,18 +145,119 @@ data_augmentation = tf.keras.Sequential([
     tf.keras.layers.RandomRotation(0.1),
 
     # Randomly zoom into images
-    tf.keras.layers.RandomZoom(0.1),
+    tf.keras.layers.RandomZoom(0.1)
 ])
 
+
 # ==========================================
-# Augmentation Verification
+# TensorFlow Dataset Creation
 # ==========================================
 
-# Add a batch dimension because Keras augmentation layers expect batches
-sample_batch = tf.expand_dims(sample_image, axis=0)
+def create_dataset(image_paths, labels, training=False):
+    """
+    Create a TensorFlow data pipeline from image paths and labels.
+    """
 
-# Apply data augmentation to the sample image
-augmented_image = data_augmentation(sample_batch, training=True)
+    # Convert Path objects into strings for TensorFlow
+    image_paths = [str(path) for path in image_paths]
 
-# Display the shape of the augmented image
-print("Augmented image shape:", augmented_image.shape)
+    # Create a TensorFlow dataset from image paths and labels
+    dataset = tf.data.Dataset.from_tensor_slices(
+        (image_paths, labels)
+    )
+
+    # Load and preprocess each image
+    dataset = dataset.map(
+        load_and_preprocess_image,
+        num_parallel_calls=tf.data.AUTOTUNE
+    )
+
+    # Apply augmentation only to the training dataset
+    if training:
+
+        # Randomly transform training images to improve
+        # the model's ability to generalize to unseen data
+        dataset = dataset.map(
+            lambda image, label: (
+                data_augmentation(image, training=True),
+                label
+            ),
+            num_parallel_calls=tf.data.AUTOTUNE
+        )
+
+        # Shuffle the training samples to reduce ordering bias
+        dataset = dataset.shuffle(
+            buffer_size=1000
+        )
+
+    # Skip individual images that cannot be decoded or processed
+    # so that one corrupt image does not stop the entire pipeline
+    dataset = dataset.ignore_errors()
+
+    # Group images into batches for efficient processing
+    dataset = dataset.batch(BATCH_SIZE)
+
+    # Prefetch batches to improve data pipeline performance
+    dataset = dataset.prefetch(
+        tf.data.AUTOTUNE
+    )
+
+    return dataset
+
+
+# ==========================================
+# Create Training Dataset
+# ==========================================
+
+# Create the training dataset with augmentation enabled
+train_dataset = create_dataset(
+    X_train,
+    y_train,
+    training=True
+)
+
+
+# ==========================================
+# Create Validation Dataset
+# ==========================================
+
+# Create the validation dataset without augmentation
+validation_dataset = create_dataset(
+    X_val,
+    y_val,
+    training=False
+)
+
+
+# ==========================================
+# Create Test Dataset
+# ==========================================
+
+# Create the test dataset without augmentation
+test_dataset = create_dataset(
+    X_test,
+    y_test,
+    training=False
+)
+
+
+# ==========================================
+# Dataset Verification
+# ==========================================
+
+# Retrieve one batch from the training dataset
+sample_images, sample_labels = next(iter(train_dataset))
+
+# Display the shape of the training image batch
+print("Training batch image shape:", sample_images.shape)
+
+# Display the shape of the corresponding labels
+print("Training batch label shape:", sample_labels.shape)
+
+# Display the range of pixel values after preprocessing
+print(
+    "Training batch pixel range:",
+    float(tf.reduce_min(sample_images)),
+    "to",
+    float(tf.reduce_max(sample_images))
+)

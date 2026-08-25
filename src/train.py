@@ -5,6 +5,13 @@
 # Import TensorFlow for building and training the CNN
 import tensorflow as tf
 
+# Import the prepared datasets from the preprocessing module
+from preprocess import train_dataset, validation_dataset, test_dataset
+
+
+# ==========================================
+# Dataset Configuration
+# ==========================================
 
 # Define the input image dimensions
 IMAGE_SIZE = (224, 224)
@@ -83,13 +90,6 @@ model = tf.keras.Sequential([
 
 
 # ==========================================
-# Model Verification
-# ==========================================
-
-# Display the CNN architecture and number of parameters
-model.summary()
-
-# ==========================================
 # Model Compilation
 # ==========================================
 
@@ -101,6 +101,46 @@ model.compile(
     # Binary cross-entropy is suitable for two-class classification
     loss="binary_crossentropy",
 
-    # Track classification accuracy during training and validation
+    # Track accuracy during training and validation
     metrics=["accuracy"]
 )
+
+
+# ==========================================
+# Model Verification
+# ==========================================
+
+# Display the CNN architecture and number of parameters
+model.summary()
+
+
+# ==========================================
+# Model Training
+# ==========================================
+
+# Define the number of complete passes through the training dataset
+EPOCHS = 10
+
+# Train the CNN using the training dataset
+# Validation data is used to monitor performance on unseen images
+history = model.fit(
+    train_dataset,
+    validation_data=validation_dataset,
+    epochs=EPOCHS
+)
+
+
+# ==========================================
+# Model Evaluation
+# ==========================================
+
+# Evaluate the trained model on the independent test dataset
+test_loss, test_accuracy = model.evaluate(
+    test_dataset
+)
+
+# Display the final test loss
+print("Test loss:", test_loss)
+
+# Display the final test accuracy
+print("Test accuracy:", test_accuracy)
