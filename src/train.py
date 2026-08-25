@@ -1,89 +1,118 @@
 # ==========================================
-# CNN Model Configuration
+# CNN Model Training
 # ==========================================
+
+# Import JSON for saving training history and evaluation metrics
+import json
+
+# Import Path for creating directories and handling file paths
+from pathlib import Path
 
 # Import TensorFlow for building and training the CNN
 import tensorflow as tf
 
-# Import the prepared datasets from the preprocessing module
-from preprocess import train_dataset, validation_dataset, test_dataset
+# Import the prepared training, validation, and test datasets
+from preprocess import (
+    train_dataset,
+    validation_dataset,
+    test_dataset
+)
 
 
 # ==========================================
-# Dataset Configuration
+# Output Directory Configuration
 # ==========================================
 
-# Define the input image dimensions
+# Define the directory where trained models will be stored
+MODEL_DIR = Path("models")
+
+# Define the directory where training reports will be stored
+REPORT_DIR = Path("reports")
+
+# Create the directories if they do not already exist
+MODEL_DIR.mkdir(parents=True, exist_ok=True)
+REPORT_DIR.mkdir(parents=True, exist_ok=True)
+
+
+# ==========================================
+# Model Configuration
+# ==========================================
+
+# Define the dimensions of the input images
 IMAGE_SIZE = (224, 224)
 
-# Define the number of color channels in an RGB image
+# Define the number of colour channels in an RGB image
 CHANNELS = 3
 
-# Define the input shape expected by the CNN
-INPUT_SHAPE = (*IMAGE_SIZE, CHANNELS)
+# Define the number of training epochs
+EPOCHS = 10
 
 
 # ==========================================
-# CNN Model Architecture
+# CNN Model Definition
 # ==========================================
 
-# Create the CNN model using a sequential architecture
+# Create a Sequential CNN model
 model = tf.keras.Sequential([
 
-    # Define the shape of the input images
-    tf.keras.layers.Input(shape=INPUT_SHAPE),
+    # Explicitly define the input shape for the CNN
+    tf.keras.Input(
+        shape=(*IMAGE_SIZE, CHANNELS)
+    ),
 
-    # Extract basic spatial features such as edges and textures
+    # First convolutional layer extracts basic image features
     tf.keras.layers.Conv2D(
-        filters=32,
-        kernel_size=(3, 3),
+        32,
+        (3, 3),
         activation="relu"
     ),
 
-    # Reduce the spatial dimensions while retaining important features
+    # Reduce the spatial dimensions of the feature maps
     tf.keras.layers.MaxPooling2D(
-        pool_size=(2, 2)
+        (2, 2)
     ),
 
-    # Extract more complex visual features
+    # Second convolutional layer learns more complex features
     tf.keras.layers.Conv2D(
-        filters=64,
-        kernel_size=(3, 3),
+        64,
+        (3, 3),
         activation="relu"
     ),
 
-    # Further reduce the spatial dimensions of the feature maps
+    # Further reduce the spatial dimensions
     tf.keras.layers.MaxPooling2D(
-        pool_size=(2, 2)
+        (2, 2)
     ),
 
-    # Extract higher-level visual features
+    # Third convolutional layer learns higher-level image features
     tf.keras.layers.Conv2D(
-        filters=128,
-        kernel_size=(3, 3),
+        128,
+        (3, 3),
         activation="relu"
     ),
 
-    # Reduce the spatial dimensions before classification
+    # Reduce the feature-map dimensions again
     tf.keras.layers.MaxPooling2D(
-        pool_size=(2, 2)
+        (2, 2)
     ),
 
-    # Flatten the feature maps into a one-dimensional vector
+    # Convert the extracted feature maps into a one-dimensional vector
     tf.keras.layers.Flatten(),
 
-    # Learn high-level patterns from the extracted image features
+    # Fully connected layer used for classification
     tf.keras.layers.Dense(
-        units=128,
+        128,
         activation="relu"
     ),
 
-    # Randomly deactivate neurons during training to reduce overfitting
-    tf.keras.layers.Dropout(0.5),
+    # Dropout helps reduce overfitting during training
+    tf.keras.layers.Dropout(
+        0.5
+    ),
 
-    # Produce a probability indicating whether the image is a dog
+    # Binary output layer for cat/dog classification
     tf.keras.layers.Dense(
-        units=1,
+        1,
         activation="sigmoid"
     )
 ])
@@ -95,52 +124,135 @@ model = tf.keras.Sequential([
 
 # Configure the model for binary classification
 model.compile(
-    # Adam optimizer updates the model weights during training
     optimizer="adam",
-
-    # Binary cross-entropy is suitable for two-class classification
     loss="binary_crossentropy",
-
-    # Track accuracy during training and validation
     metrics=["accuracy"]
 )
 
 
 # ==========================================
-# Model Verification
+# Display Model Architecture
 # ==========================================
 
-# Display the CNN architecture and number of parameters
+# Print the model architecture and parameter counts
 model.summary()
+
+
+# ==========================================
+# Training Configuration
+# ==========================================
+
+# Save the best model based on validation loss
+model_checkpoint = tf.keras.callbacks.ModelCheckpoint(
+    filepath=MODEL_DIR / "baseline_cnn.keras",
+    monitor="val_loss",
+    save_best_only=True,
+    mode="min",
+    verbose=1
+)
+
+# Stop training early if validation performance stops improving
+early_stopping = tf.keras.callbacks.EarlyStopping(
+    monitor="val_loss",
+    patience=3,
+    mode="min",
+    restore_best_weights=True,
+    verbose=1
+)
 
 
 # ==========================================
 # Model Training
 # ==========================================
 
-# Define the number of complete passes through the training dataset
-EPOCHS = 10
-
-# Train the CNN using the training dataset
-# Validation data is used to monitor performance on unseen images
+# Train the CNN using the prepared training and validation datasets
 history = model.fit(
     train_dataset,
     validation_data=validation_dataset,
-    epochs=EPOCHS
+    epochs=EPOCHS,
+    callbacks=[
+        model_checkpoint,
+        early_stopping
+    ]
 )
 
 
 # ==========================================
-# Model Evaluation
+# Save Training History
 # ==========================================
 
-# Evaluate the trained model on the independent test dataset
-test_loss, test_accuracy = model.evaluate(
-    test_dataset
+# Convert TensorFlow training history into a regular Python dictionary
+training_history = {
+    key: [float(value) for value in values]
+    for key, values in history.history.items()
+}
+
+# Save the training history as a JSON file
+with open(
+    REPORT_DIR / "training_history.json",
+    "w"
+) as file:
+
+    json.dump(
+        training_history,
+        file,
+        indent=4
+    )
+
+
+# ==========================================
+# Load Best Model
+# ==========================================
+
+# Load the best-performing model saved during training
+best_model = tf.keras.models.load_model(
+    MODEL_DIR / "baseline_cnn.keras"
 )
 
-# Display the final test loss
+
+# ==========================================
+# Test Set Evaluation
+# ==========================================
+
+# Evaluate the best model using the unseen test dataset
+test_loss, test_accuracy = best_model.evaluate(
+    test_dataset,
+    verbose=1
+)
+
+# Display the final test results
 print("Test loss:", test_loss)
-
-# Display the final test accuracy
 print("Test accuracy:", test_accuracy)
+
+
+# ==========================================
+# Save Test Metrics
+# ==========================================
+
+# Store the final evaluation metrics in a dictionary
+test_metrics = {
+    "test_loss": float(test_loss),
+    "test_accuracy": float(test_accuracy)
+}
+
+# Save the test metrics as a JSON file
+with open(
+    REPORT_DIR / "test_metrics.json",
+    "w"
+) as file:
+
+    json.dump(
+        test_metrics,
+        file,
+        indent=4
+    )
+
+
+# ==========================================
+# Training Completion Message
+# ==========================================
+
+# Confirm that the model and experiment results were saved successfully
+print("Baseline model saved to:", MODEL_DIR / "baseline_cnn.keras")
+print("Training history saved to:", REPORT_DIR / "training_history.json")
+print("Test metrics saved to:", REPORT_DIR / "test_metrics.json")
