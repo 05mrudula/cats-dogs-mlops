@@ -32,6 +32,17 @@ jobs:
         run: |
           PYTHONPATH=. pytest -v
 
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build Docker image
         run: |
-          docker build -t cats-dogs-api .
+          docker build -t ghcr.io/05mrudula/cats-dogs-api:latest .
+
+      - name: Push Docker image
+        run: |
+          docker push ghcr.io/05mrudula/cats-dogs-api:latest
