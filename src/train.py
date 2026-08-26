@@ -15,12 +15,16 @@ import tensorflow as tf
 import mlflow
 import mlflow.tensorflow
 
-# Import the prepared training, validation, and test datasets
-from preprocess import (
-    train_dataset,
-    validation_dataset,
-    test_dataset
-)
+# Import dataset preparation function
+from preprocess import prepare_datasets
+
+
+# ==========================================
+# Prepare Datasets
+# ==========================================
+
+# Create training, validation, and test datasets
+train_dataset, validation_dataset, test_dataset = prepare_datasets()
 
 
 # ==========================================
