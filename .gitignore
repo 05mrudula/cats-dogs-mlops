@@ -6,3 +6,6 @@ models/
 
 # Generated experiment reports
 reports/
+
+mlflow.db
+mlruns/

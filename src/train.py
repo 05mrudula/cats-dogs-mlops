@@ -1,5 +1,5 @@
 # ==========================================
-# CNN Model Training
+# CNN Model Training with MLflow Tracking
 # ==========================================
 
 # Import JSON for saving training history and evaluation metrics
@@ -10,6 +10,10 @@ from pathlib import Path
 
 # Import TensorFlow for building and training the CNN
 import tensorflow as tf
+
+# Import MLflow for experiment tracking
+import mlflow
+import mlflow.tensorflow
 
 # Import the prepared training, validation, and test datasets
 from preprocess import (
@@ -46,6 +50,23 @@ CHANNELS = 3
 
 # Define the number of training epochs
 EPOCHS = 10
+
+# Define the batch size
+BATCH_SIZE = 32
+
+# Define the optimizer
+OPTIMIZER = "adam"
+
+# Define the loss function
+LOSS_FUNCTION = "binary_crossentropy"
+
+
+# ==========================================
+# MLflow Configuration
+# ==========================================
+
+# Define the MLflow experiment name
+mlflow.set_experiment("cats-dogs-baseline-cnn")
 
 
 # ==========================================
@@ -124,8 +145,8 @@ model = tf.keras.Sequential([
 
 # Configure the model for binary classification
 model.compile(
-    optimizer="adam",
-    loss="binary_crossentropy",
+    optimizer=OPTIMIZER,
+    loss=LOSS_FUNCTION,
     metrics=["accuracy"]
 )
 
@@ -162,97 +183,205 @@ early_stopping = tf.keras.callbacks.EarlyStopping(
 
 
 # ==========================================
-# Model Training
+# Start MLflow Run
 # ==========================================
 
-# Train the CNN using the prepared training and validation datasets
-history = model.fit(
-    train_dataset,
-    validation_data=validation_dataset,
-    epochs=EPOCHS,
-    callbacks=[
-        model_checkpoint,
-        early_stopping
-    ]
-)
+with mlflow.start_run() as run:
 
+    # Display the MLflow run ID
+    print("\nMLflow Run ID:", run.info.run_id)
 
-# ==========================================
-# Save Training History
-# ==========================================
+    # ------------------------------------------
+    # Log Model Parameters
+    # ------------------------------------------
 
-# Convert TensorFlow training history into a regular Python dictionary
-training_history = {
-    key: [float(value) for value in values]
-    for key, values in history.history.items()
-}
+    mlflow.log_params({
+        "image_width": IMAGE_SIZE[0],
+        "image_height": IMAGE_SIZE[1],
+        "channels": CHANNELS,
+        "batch_size": BATCH_SIZE,
+        "epochs": EPOCHS,
+        "optimizer": OPTIMIZER,
+        "loss_function": LOSS_FUNCTION,
+        "dropout": 0.5,
+        "conv_layers": 3
+    })
 
-# Save the training history as a JSON file
-with open(
-    REPORT_DIR / "training_history.json",
-    "w"
-) as file:
+    # ------------------------------------------
+    # Model Training
+    # ------------------------------------------
 
-    json.dump(
-        training_history,
-        file,
-        indent=4
+    print("\nStarting model training...\n")
+
+    history = model.fit(
+        train_dataset,
+        validation_data=validation_dataset,
+        epochs=EPOCHS,
+        callbacks=[
+            model_checkpoint,
+            early_stopping
+        ]
     )
 
+    # ------------------------------------------
+    # Log Training Metrics
+    # ------------------------------------------
 
-# ==========================================
-# Load Best Model
-# ==========================================
+    # Log all metrics collected during training
+    for epoch in range(len(history.history["loss"])):
 
-# Load the best-performing model saved during training
-best_model = tf.keras.models.load_model(
-    MODEL_DIR / "baseline_cnn.keras"
-)
+        mlflow.log_metrics(
+            {
+                "train_loss": float(
+                    history.history["loss"][epoch]
+                ),
+                "train_accuracy": float(
+                    history.history["accuracy"][epoch]
+                ),
+                "validation_loss": float(
+                    history.history["val_loss"][epoch]
+                ),
+                "validation_accuracy": float(
+                    history.history["val_accuracy"][epoch]
+                )
+            },
+            step=epoch
+        )
 
+    # ------------------------------------------
+    # Save Training History
+    # ------------------------------------------
 
-# ==========================================
-# Test Set Evaluation
-# ==========================================
+    # Convert TensorFlow training history into
+    # a regular Python dictionary
+    training_history = {
+        key: [float(value) for value in values]
+        for key, values in history.history.items()
+    }
 
-# Evaluate the best model using the unseen test dataset
-test_loss, test_accuracy = best_model.evaluate(
-    test_dataset,
-    verbose=1
-)
+    # Save the training history as a JSON file
+    training_history_path = REPORT_DIR / "training_history.json"
 
-# Display the final test results
-print("Test loss:", test_loss)
-print("Test accuracy:", test_accuracy)
+    with open(
+        training_history_path,
+        "w"
+    ) as file:
 
+        json.dump(
+            training_history,
+            file,
+            indent=4
+        )
 
-# ==========================================
-# Save Test Metrics
-# ==========================================
+    # ------------------------------------------
+    # Log Training History to MLflow
+    # ------------------------------------------
 
-# Store the final evaluation metrics in a dictionary
-test_metrics = {
-    "test_loss": float(test_loss),
-    "test_accuracy": float(test_accuracy)
-}
-
-# Save the test metrics as a JSON file
-with open(
-    REPORT_DIR / "test_metrics.json",
-    "w"
-) as file:
-
-    json.dump(
-        test_metrics,
-        file,
-        indent=4
+    mlflow.log_artifact(
+        str(training_history_path),
+        artifact_path="reports"
     )
 
+    # ------------------------------------------
+    # Log Model to MLflow
+    # ------------------------------------------
 
-# ==========================================
-# Training Completion Message
-# ==========================================
+    # Load the best-performing model saved by
+    # ModelCheckpoint
+    best_model = tf.keras.models.load_model(
+        MODEL_DIR / "baseline_cnn.keras"
+    )
 
-# Confirm that the model and experiment results were saved successfully
-print("Baseline model saved to:", MODEL_DIR / "baseline_cnn.keras")
-print("Training history saved to:", REPORT_DIR / "training_history.json")
-print("Test metrics saved to:", REPORT_DIR / "test_metrics.json")
+    # Log the trained model as an MLflow artifact
+    mlflow.tensorflow.log_model(
+        best_model,
+        name="baseline_cnn"
+    )
+
+    # ------------------------------------------
+    # Test Set Evaluation
+    # ------------------------------------------
+
+    print("\nEvaluating model on test dataset...\n")
+
+    test_loss, test_accuracy = best_model.evaluate(
+        test_dataset,
+        verbose=1
+    )
+
+    # Display the final test results
+    print("\nTest loss:", test_loss)
+    print("Test accuracy:", test_accuracy)
+
+    # ------------------------------------------
+    # Log Test Metrics to MLflow
+    # ------------------------------------------
+
+    mlflow.log_metrics({
+        "test_loss": float(test_loss),
+        "test_accuracy": float(test_accuracy)
+    })
+
+    # ------------------------------------------
+    # Save Test Metrics
+    # ------------------------------------------
+
+    test_metrics = {
+        "test_loss": float(test_loss),
+        "test_accuracy": float(test_accuracy)
+    }
+
+    test_metrics_path = REPORT_DIR / "test_metrics.json"
+
+    with open(
+        test_metrics_path,
+        "w"
+    ) as file:
+
+        json.dump(
+            test_metrics,
+            file,
+            indent=4
+        )
+
+    # ------------------------------------------
+    # Log Test Metrics File to MLflow
+    # ------------------------------------------
+
+    mlflow.log_artifact(
+        str(test_metrics_path),
+        artifact_path="reports"
+    )
+
+    # ------------------------------------------
+    # Log Model File to MLflow
+    # ------------------------------------------
+
+    mlflow.log_artifact(
+        str(MODEL_DIR / "baseline_cnn.keras"),
+        artifact_path="models"
+    )
+
+    # ------------------------------------------
+    # Display MLflow Run Information
+    # ------------------------------------------
+
+    print("\n==========================================")
+    print("MLflow Training Run Completed")
+    print("==========================================")
+
+    print("Experiment: cats-dogs-baseline-cnn")
+    print("Run ID:", run.info.run_id)
+
+    print("\nModel saved to:")
+    print(MODEL_DIR / "baseline_cnn.keras")
+
+    print("\nTraining history saved to:")
+    print(training_history_path)
+
+    print("\nTest metrics saved to:")
+    print(test_metrics_path)
+
+    print("\nTest accuracy:", test_accuracy)
+
+    print("\nMLflow tracking data saved locally.")
