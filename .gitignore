@@ -1,11 +1,6 @@
 .DS_Store
 __pycache__/
 
-# Generated model artifacts
-models/
-
-# Generated experiment reports
-reports/
-
+# Local MLflow tracking database
 mlflow.db
 mlruns/
