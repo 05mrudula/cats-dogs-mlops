@@ -1,0 +1,12 @@
+.git
+.github
+.vscode
+
+__pycache__/
+*.pyc
+
+data/
+mlruns/
+mlflow.db
+
+reports/
