@@ -30,6 +30,18 @@ jobs:
         run: |
           python -m pip install Pillow
 
+      - name: Wait for API
+        run: |
+          for i in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8001/health; then
+              echo
+              echo "API is ready."
+              break
+            fi
+            echo "Waiting for API..."
+            sleep 2
+          done
+
       - name: Run smoke tests
         run: |
           chmod +x scripts/smoke_test.sh
