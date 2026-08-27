@@ -17,30 +17,14 @@ jobs:
         run: |
           docker pull ghcr.io/05mrudula/cats-dogs-api:latest
 
-      - name: Deploy to Kubernetes
+      - name: Deploy with Docker Compose
         run: |
-          kubectl apply -f k8s/deployment.yaml
-          kubectl apply -f k8s/service.yaml
+          docker compose pull
+          docker compose up -d
 
-      - name: Update deployment image
+      - name: Check service status
         run: |
-          kubectl set image deployment/cats-dogs-api \
-            cats-dogs-api=ghcr.io/05mrudula/cats-dogs-api:latest
-
-      - name: Wait for deployment
-        run: |
-          kubectl rollout status deployment/cats-dogs-api --timeout=180s
-
-      - name: Check Kubernetes status
-        run: |
-          kubectl get pods
-          kubectl get service cats-dogs-api
-
-      - name: Start port forwarding
-        run: |
-          kubectl port-forward service/cats-dogs-api 8001:8001 > /tmp/port-forward.log 2>&1 &
-          echo $! > /tmp/port-forward.pid
-          sleep 5
+          docker compose ps
 
       - name: Install smoke test dependency
         run: |
@@ -51,9 +35,12 @@ jobs:
           chmod +x scripts/smoke_test.sh
           ./scripts/smoke_test.sh
 
-      - name: Stop port forwarding
+      - name: Show container logs on failure
+        if: failure()
+        run: |
+          docker compose logs cats-dogs-api
+
+      - name: Stop Docker Compose service
         if: always()
         run: |
-          if [ -f /tmp/port-forward.pid ]; then
-            kill $(cat /tmp/port-forward.pid) || true
-          fi
+          docker compose down
