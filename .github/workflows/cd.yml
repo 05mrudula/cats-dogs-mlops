@@ -39,8 +39,3 @@ jobs:
         if: failure()
         run: |
           docker compose logs cats-dogs-api
-
-      - name: Stop Docker Compose service
-        if: always()
-        run: |
-          docker compose down
