@@ -1,0 +1,7 @@
+services:
+  cats-dogs-api:
+    image: ghcr.io/05mrudula/cats-dogs-api:latest
+    container_name: cats-dogs-api
+    ports:
+      - "8001:8000"
+    restart: unless-stopped
