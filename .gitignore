@@ -3,4 +3,4 @@ __pycache__/
 
 # Local MLflow tracking database
 mlflow.db
-mlruns/
+mlruns/actions-runner/

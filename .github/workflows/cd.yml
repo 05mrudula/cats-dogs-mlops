@@ -1,0 +1,55 @@
+name: CD
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Pull latest Docker image
+        run: |
+          docker pull ghcr.io/05mrudula/cats-dogs-api:latest
+
+      - name: Deploy to Kubernetes
+        run: |
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/service.yaml
+
+      - name: Update deployment image
+        run: |
+          kubectl set image deployment/cats-dogs-api \
+            cats-dogs-api=ghcr.io/05mrudula/cats-dogs-api:latest
+
+      - name: Wait for deployment
+        run: |
+          kubectl rollout status deployment/cats-dogs-api --timeout=180s
+
+      - name: Check pod status
+        run: |
+          kubectl get pods
+          kubectl get service cats-dogs-api
+
+      - name: Start port forwarding
+        run: |
+          kubectl port-forward service/cats-dogs-api 8001:8001 > /tmp/port-forward.log 2>&1 &
+          echo $! > /tmp/port-forward.pid
+          sleep 5
+
+      - name: Smoke test
+        run: |
+          chmod +x scripts/smoke_test.sh
+          ./scripts/smoke_test.sh
+
+      - name: Stop port forwarding
+        if: always()
+        run: |
+          if [ -f /tmp/port-forward.pid ]; then
+            kill $(cat /tmp/port-forward.pid) || true
+          fi
