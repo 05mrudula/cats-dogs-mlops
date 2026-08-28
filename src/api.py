@@ -10,6 +10,9 @@ from fastapi import FastAPI, File, UploadFile, HTTPException
 from PIL import Image
 import io
 
+import time
+import logging
+
 
 # ==========================================
 # Configuration
@@ -176,3 +179,37 @@ async def predict(
             4
         )
     }
+# ==========================================
+# Logging Configuration
+# ==========================================
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+logger = logging.getLogger(__name__)
+
+
+# ==========================================
+# Request Logging Middleware
+# ==========================================
+
+@app.middleware("http")
+async def log_requests(request, call_next):
+
+    start_time = time.time()
+
+    response = await call_next(request)
+
+    duration = time.time() - start_time
+
+    logger.info(
+        "%s %s - Status: %s - Latency: %.4fs",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration
+    )
+
+    return response
