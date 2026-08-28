@@ -13,6 +13,8 @@ import io
 import time
 import logging
 
+from prometheus_fastapi_instrumentator import Instrumentator
+
 
 # ==========================================
 # Configuration
@@ -49,6 +51,13 @@ app = FastAPI(
     description="CNN-based image classification API",
     version="1.0.0"
 )
+
+
+# ==========================================
+# Prometheus Metrics
+# ==========================================
+
+Instrumentator().instrument(app).expose(app)
 
 
 # ==========================================
@@ -179,6 +188,8 @@ async def predict(
             4
         )
     }
+
+
 # ==========================================
 # Logging Configuration
 # ==========================================

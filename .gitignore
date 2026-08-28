@@ -1,12 +1,11 @@
 .DS_Store
 __pycache__/
 
-# Local MLflow tracking
+# Local MLflow tracking database
 mlflow.db
-mlruns/
+mlruns/actions-runner/
 
-# Local GitHub Actions runner
+# Ignore the actions-runner directory and mlruns directory
 actions-runner/
-
-# Local smoke-test image
+mlruns/
 tests/test.jpg
