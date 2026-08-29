@@ -1,0 +1,11 @@
+filename,true_label,predicted_label,confidence
+0.jpg,Cat,Cat,0.9023
+1.jpg,Cat,Cat,0.9959
+10.jpg,Cat,Cat,0.9609
+100.jpg,Cat,Dog,0.8732
+1000.jpg,Cat,Cat,0.9361
+0.jpg,Dog,Dog,0.9789
+1.jpg,Dog,Dog,0.9298
+10.jpg,Dog,Dog,0.9811
+100.jpg,Dog,Dog,0.7042
+1000.jpg,Dog,Cat,0.6474
